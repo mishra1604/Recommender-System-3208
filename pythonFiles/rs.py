@@ -40,4 +40,5 @@ def predict_rating(user, item):
             return numerator / denominator
 
 # example usage
-print(predict_rating('Charlie', 'item3'))  # output: 4.219520753089335
+# print(predict_rating('Charlie', 'item3'))  # output: 4.219520753089335
+print(item_similarities)
