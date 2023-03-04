@@ -2,9 +2,12 @@ import numpy as np
 import math
 import sqlite3
 import logging
+import time
 
 # find the cosine similarity between users in the sqlite3 database
 conn = sqlite3.connect( 'comp3208_train.db' )
+
+
 def cosine_similarity_users(user1, user2 ):
     c = conn.cursor()
     c.execute( 'SELECT Rating FROM example_table WHERE UserID = ?', (user1,) )
@@ -41,32 +44,17 @@ def cosine_similarity_items(item1, item2 ):
         return numerator / denominator
     else:
         return 0
-    
 
 
-# item based collaborative filtering for a user-item pair
-def predict_rating(user, item):
+# k nearest neighbours to an item
+def k_nearest_neighbours(item, k):
     c = conn.cursor()
-    c.execute( 'SELECT ItemID, Rating FROM example_table')
-    all_items = c.fetchall()
-
-    c.execute( 'SELECT ItemID, Rating FROM example_table WHERE UserID = ?', (item,) )
-    item = c.fetchone()
-
-
-    # finding similar items based on k nearest neighbours
-    k = 5
-    item_similarities = []
-
-    for i in all_items:
-        item_similarities.append(cosine_similarity_items(item[0], i[0]))
-
-    item_similarities.sort(key = lambda x: x[1], reverse = True)
-    item_similarities = item_similarities[:k]
-
-    print(item_similarities)
-
-
-print(predict_rating(1, 11))
-
-
+    c.execute( 'SELECT ItemID FROM example_table WHERE ItemID != ?', (item,) )
+    duplicate_items = c.fetchall()
+    items = list(set(duplicate_items))
+    items = [item[0] for item in items]
+    similarities = [cosine_similarity_items(item, item2) for item2 in items]
+    similarities = np.array(similarities)
+    items = np.array(items)
+    sorted_indices = np.argsort(similarities)
+    return items[sorted_indices[-k:]]
