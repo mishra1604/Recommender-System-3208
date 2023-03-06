@@ -58,3 +58,38 @@ def k_nearest_neighbours(item, k):
     items = np.array(items)
     sorted_indices = np.argsort(similarities)
     return items[sorted_indices[-k:]]
+
+# predict user rating for an item using k nearest neighbours
+def predict_rating(user, item, k):
+    c = conn.cursor()
+    neighbours = k_nearest_neighbours(item, k)
+    neighbour_ratings = []
+    for neighbour in neighbours:
+        c.execute( 'SELECT Rating FROM example_table WHERE UserID = ? AND ItemID = ?', (user, neighbour) )
+        rating = c.fetchone()
+        if rating is not None:
+            neighbour_ratings.append(rating[0])
+        else:
+            neighbour_ratings.append(0)
+    if sum(neighbour_ratings) > 0:
+        return sum(neighbour_ratings) / len(neighbour_ratings)
+    else:
+        return 0
+
+# print(k_nearest_neighbours(93, 5))
+c = conn.cursor()
+neighbours = k_nearest_neighbours(93, 60)
+itemID = 93
+userID = 1
+userRatingForNeighbour = []
+for neighbour in neighbours:
+    c.execute("SELECT Rating FROM example_table WHERE UserID = ? AND ItemID = ?", (userID, neighbour))
+    rating = c.fetchone()
+    if rating is not None:
+        userRatingForNeighbour.append(rating[0])
+    else:
+        userRatingForNeighbour.append(0)
+
+Item_similarity_with_neighbour = [cosine_similarity_items(itemID, neighbour) for neighbour in neighbours]
+# predict_rating_item = sum([Item_similarity_with_neighbour[i] * userRatingForNeighbour[i] for i in range(len(neighbours))]) / sum(Item_similarity_with_neighbour)
+print(userRatingForNeighbour)
