@@ -113,9 +113,20 @@ def similarity_matrix_items():
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
     items = [item[0] for item in items]
-    similarity_matrix = np.zeros((len(items), len(items)))
-    for i in range(len(items)):
-        for j in range(len(items)):
 
-            similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j], 1)
+
+    similarity_matrix = np.zeros((len(items), len(items)))
+    for i in range(1, len(items)):
+        print(i)
+        for j in range(1, len(items)):
+            if i == j:
+                similarity_matrix[i][j] = 1
+            elif similarity_matrix[i][j] == 0:
+                similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
+                similarity_matrix[j][i] = similarity_matrix[i][j]
+            else:
+                continue
     return similarity_matrix
+
+print(similarity_matrix_items().shape)
+print(similarity_matrix_items()[0])
