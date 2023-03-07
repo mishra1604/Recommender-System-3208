@@ -3,6 +3,7 @@ import math
 import sqlite3
 import logging
 import time
+import concurrent.futures
 
 # find the cosine similarity between users in the sqlite3 database
 conn = sqlite3.connect( 'comp3208_train.db' )
@@ -20,6 +21,7 @@ user_avg_rating()
     
 # find the adjusted cosine similarity between items in the sqlite3 database
 def cosine_similarity_items(item1, item2):
+    conn = sqlite3.connect( 'comp3208_train.db' )
     c = conn.cursor()
     c.execute( 'SELECT UserID, Rating FROM example_table WHERE ItemID = ?', (item1,) )
     item1 = c.fetchall()
@@ -107,18 +109,31 @@ def basic_mae():
     print("MAE for userID 1 = ", mae)
 
 # calculating similarity matrix for items
-def similarity_matrix_items():
-    c = conn.cursor()
-    c.execute( 'SELECT ItemID FROM example_table' )
-    duplicate_items = c.fetchall()
-    items = list(set(duplicate_items))
-    items = [item[0] for item in items]
+# def similarity_matrix_items(items):
+#     c = conn.cursor()
+#     c.execute( 'SELECT ItemID FROM example_table' )
+#     duplicate_items = c.fetchall()
+#     items = list(set(duplicate_items))
+#     items = [item[0] for item in items]
+#     similarity_matrix = np.zeros((len(items), len(items)))
+#     for i in range(0, len(items)):
+#         print(i)
+#         for j in range(i, len(items)):
+#             if i == j:
+#                 similarity_matrix[i][j] = 1
+#             elif similarity_matrix[i][j] == 0:
+#                 similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
+#                 similarity_matrix[j][i] = similarity_matrix[i][j]
+#             else:
+#                 continue
+#     return similarity_matrix
 
+import multiprocessing
 
-    similarity_matrix = np.zeros((len(items), len(items)))
-    for i in range(1, len(items)):
+def compute_similarity(similarity_matrix, items, start_index, end_index):
+    for i in range(start_index, end_index):
         print(i)
-        for j in range(1, len(items)):
+        for j in range(i, len(items)):
             if i == j:
                 similarity_matrix[i][j] = 1
             elif similarity_matrix[i][j] == 0:
@@ -126,7 +141,32 @@ def similarity_matrix_items():
                 similarity_matrix[j][i] = similarity_matrix[i][j]
             else:
                 continue
+
+def similarity_matrix_items_parallel():
+    c = conn.cursor()
+    c.execute( 'SELECT ItemID FROM example_table' )
+    duplicate_items = c.fetchall()
+    items = list(set(duplicate_items))
+    items = [item[0] for item in items]
+    similarity_matrix = np.zeros((len(items), len(items)))
+    
+    num_processes = multiprocessing.cpu_count()
+    processes = []
+    chunk_size = len(items) // num_processes
+
+    print("Number of processes: ", num_processes)
+    
+    for i in range(num_processes):
+        start_index = i * chunk_size
+        end_index = (i+1) * chunk_size if i < num_processes-1 else len(items)
+        p = multiprocessing.Process(target=compute_similarity, args=(similarity_matrix, items, start_index, end_index))
+        processes.append(p)
+        p.start()
+        
+    for p in processes:
+        p.join()
+    
     return similarity_matrix
 
-print(similarity_matrix_items().shape)
-print(similarity_matrix_items()[0])
+if __name__ == '__main__':
+    similarity_matrix_items_parallel()
