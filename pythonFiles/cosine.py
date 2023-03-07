@@ -169,4 +169,6 @@ def similarity_matrix_items_parallel():
     return similarity_matrix
 
 if __name__ == '__main__':
-    similarity_matrix_items_parallel()
+    # similarity_matrix_items_parallel()
+    similarity_matrix = np.zeros((1600, 1600))
+    np.savetxt("similarity_matrix.csv", similarity_matrix, delimiter=",")
