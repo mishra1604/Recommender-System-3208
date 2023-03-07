@@ -136,8 +136,8 @@ def compute_similarity(similarity_matrix, items, start_index, end_index):
         for j in range(i, len(items)):
             if i == j:
                 similarity_matrix[i][j] = 1
-            elif similarity_matrix[i][j] == 0:
-                similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
+            elif similarity_matrix[i][j] == 0.1:
+                similarity_matrix[i][j] = 848.2 #cosine_similarity_items(items[i], items[j])
                 similarity_matrix[j][i] = similarity_matrix[i][j]
             else:
                 continue
@@ -147,8 +147,8 @@ def similarity_matrix_items_parallel():
     c.execute( 'SELECT ItemID FROM example_table' )
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
-    items = [item[0] for item in items]
-    similarity_matrix = np.zeros((len(items), len(items)))
+    items = [item[0] for item in items][:10]
+    similarity_matrix = np.empty((len(items), len(items)))
     
     num_processes = multiprocessing.cpu_count()
     processes = []
@@ -169,6 +169,7 @@ def similarity_matrix_items_parallel():
     return similarity_matrix
 
 if __name__ == '__main__':
-    # similarity_matrix_items_parallel()
-    similarity_matrix = np.zeros((1600, 1600))
+    similarity_matrix = similarity_matrix_items_parallel()
     np.savetxt("similarity_matrix.csv", similarity_matrix, delimiter=",")
+    for i in similarity_matrix[:10]:
+        print(i)
