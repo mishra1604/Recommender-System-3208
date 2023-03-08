@@ -4,6 +4,7 @@ import sqlite3
 import logging
 import time
 import concurrent.futures
+import codecs
 
 # find the cosine similarity between users in the sqlite3 database
 conn = sqlite3.connect( 'comp3208_train.db' )
@@ -56,6 +57,48 @@ def cosine_similarity_items(item1, item2):
     else:
         value = "{:.4f}".format(numerator / denominator)
         return value
+
+# opening the matrix csv file into an sqlite db
+def create_item_similarityDB():
+    conn = sqlite3.connect('item_similarity.db')
+
+    readHandle = codecs.open( 'trial_matrix.csv', 'r', 'utf-8', errors = 'replace' )
+    listLines = readHandle.readlines()
+    readHandle.close()
+
+    c = conn.cursor()
+    c.execute( 'CREATE TABLE IF NOT EXISTS items_table (ItemID_1 INT, ItemID_2 INT, Similarity FLOAT)' )
+    conn.commit()
+
+    c.execute( 'DELETE FROM items_table' )
+    conn.commit()
+
+    for strLine in listLines :
+        if len(strLine.strip()) > 0 :
+            # itemid, itemid, Similarity
+            listParts = strLine.strip().split(',')
+            if len(listParts) == 3 :
+                # insert training set into table
+                c.execute( 'INSERT INTO items_table VALUES (?,?,?)', (listParts[0], listParts[1], listParts[2]) )
+            else :
+                raise Exception( 'failed to parse csv : ' + repr(listParts) )
+    conn.commit()
+
+    c.execute( 'CREATE INDEX IF NOT EXISTS items_table_index on items_table (ItemID_1, ItemID_2)' )
+    conn.commit()
+
+def knn(user, item, k=5):
+    c = conn.cursor()
+    c.execute( 'SELECT ItemID FROM example_table WHERE UserID = ?', (user,) )
+    duplicate_items = c.fetchall()
+    items = list(set(duplicate_items)) # list of items rated by the user
+
+    similarity = []
+    for i in items:
+        c.execute( 'SELECT ItemID_1, ItemID_2, Similarity FROM items_table WHERE ItemID_1 != ? AND ItemID_2 = ?', (item, i) )
+        item_tuple = c.fetchone()
+        similarity.append(item_tuple)
+    
 
 # k nearest neighbours to an item
 def k_nearest_neighbours(user, item, k):
@@ -154,7 +197,7 @@ def similarity_matrix_items_parallel():
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
     items.sort()
-    items = [item[0] for item in items][:10]
+    items = [item[0] for item in items][:100]
     similarity_matrix = np.full((len(items), len(items)), 0.)
     num_processes = multiprocessing.cpu_count()
     processes = []
@@ -175,5 +218,5 @@ def similarity_matrix_items_parallel():
     return similarity_matrix
 
 if __name__ == '__main__':
-    matrix = similarity_matrix_items_parallel()
-    # np.savetxt("similarity_matrix.csv", similarity_matrix, delimiter=",")
+    # matrix = similarity_matrix_items_parallel()
+    create_item_similarityDB()

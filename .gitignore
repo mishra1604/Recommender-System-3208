@@ -6,3 +6,5 @@ gavin_file.py
 shared_matrix.txt
 train_100k.db
 trial_matrix.csv
+.DS_Store
+bin/
