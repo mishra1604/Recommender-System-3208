@@ -2,3 +2,7 @@ Lib/
 Scripts/
 pyvenv.cfg
 train_100k_withratings_new.csv
+gavin_file.py
+shared_matrix.txt
+train_100k.db
+trial_matrix.csv
