@@ -90,14 +90,22 @@ def create_item_similarityDB():
 def knn(user, item, k=5):
     c = conn.cursor()
     c.execute( 'SELECT ItemID FROM example_table WHERE UserID = ?', (user,) )
-    duplicate_items = c.fetchall()
-    items = list(set(duplicate_items)) # list of items rated by the user
+    items = c.fetchall()
+    items = [item[0] for item in items]
 
+    second_conn = sqlite3.connect('item_similarity.db')
+    d = second_conn.cursor()
     similarity = []
     for i in items:
-        c.execute( 'SELECT ItemID_1, ItemID_2, Similarity FROM items_table WHERE ItemID_1 != ? AND ItemID_2 = ?', (item, i) )
-        item_tuple = c.fetchone()
-        similarity.append(item_tuple)
+        d.execute( 'SELECT ItemID_1, ItemID_2, Similarity FROM items_table WHERE ItemID_1 = ? AND ItemID_2 = ?', (i, item) )
+        item_tuple = d.fetchall()
+        similarity.append(item_tuple[0])
+    
+    
+    # sort the list of tuples by similarity
+    sorted_similarity = sorted(similarity, key=lambda x: x[2], reverse=True)
+    closestNeighbours = sorted_similarity[:k]
+    return closestNeighbours
     
 
 # k nearest neighbours to an item
@@ -219,4 +227,4 @@ def similarity_matrix_items_parallel():
 
 if __name__ == '__main__':
     # matrix = similarity_matrix_items_parallel()
-    create_item_similarityDB()
+    print(knn(1, 93))
