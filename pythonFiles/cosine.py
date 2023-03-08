@@ -143,7 +143,7 @@ def compute_similarity(similarity_matrix, items, start_index, end_index):
                     similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
                     similarity_matrix[j][i] = similarity_matrix[i][j]
                 row.append(similarity_matrix[i][j])
-            f.write(str(row) + "\n")
+            f.write(','.join([str(x) for x in row]) + "\n")
 
 def similarity_matrix_items_parallel():
     c = conn.cursor()
@@ -172,6 +172,5 @@ def similarity_matrix_items_parallel():
     return similarity_matrix
 
 if __name__ == '__main__':
-    # matrix = similarity_matrix_items_parallel()
-    print(cosine_similarity_items(11,4))
+    matrix = similarity_matrix_items_parallel()
     # np.savetxt("similarity_matrix.csv", similarity_matrix, delimiter=",")
