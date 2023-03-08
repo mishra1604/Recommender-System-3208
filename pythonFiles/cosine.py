@@ -132,18 +132,21 @@ def basic_mae():
 import multiprocessing
 
 def compute_similarity(similarity_matrix, items, start_index, end_index):
-    with open('similarity_matrix.csv', 'a') as f:
+    with open('trial_matrix.csv', 'a') as f:
         for i in range(start_index, end_index):
             print(i)
-            row = []
-            for j in range(len(items)):
+            row = [] + [0 for x in range(i)]
+            for j in range(i, len(items)):
                 if i == j:
                     similarity_matrix[i][j] = 1.0
+                    f.write(str(items[i]) + ',' + str(items[j]) + ',' + str(1) + "\n")
                 else:
                     similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
                     similarity_matrix[j][i] = similarity_matrix[i][j]
+                    f.write(str(items[i]) + ',' + str(items[j]) + ',' + str(similarity_matrix[i][j]) + "\n")
+                    f.write(str(items[j]) + ',' + str(items[i]) + ',' + str(similarity_matrix[j][i]) + "\n")
                 row.append(similarity_matrix[i][j])
-            f.write(','.join([str(x) for x in row]) + "\n")
+            # f.write(','.join([str(x) for x in row]) + "\n")
 
 def similarity_matrix_items_parallel():
     c = conn.cursor()
@@ -151,7 +154,7 @@ def similarity_matrix_items_parallel():
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
     items.sort()
-    items = [item[0] for item in items][:100]
+    items = [item[0] for item in items][:10]
     similarity_matrix = np.full((len(items), len(items)), 0.)
     num_processes = multiprocessing.cpu_count()
     processes = []
