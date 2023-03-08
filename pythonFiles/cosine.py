@@ -129,24 +129,17 @@ def basic_mae():
 #                 continue
 #     return similarity_matrix
 
-import multiprocessing
+import multiprocessing as mp
 
-def compute_similarity(similarity_matrix, items, start_index, end_index):
-    with open('trial_matrix.csv', 'a') as f:
-        for i in range(start_index, end_index):
-            print(i)
-            row = [] + [0 for x in range(i)]
-            for j in range(i, len(items)):
-                if i == j:
-                    similarity_matrix[i][j] = 1.0
-                    f.write(str(items[i]) + ',' + str(items[j]) + ',' + str(1) + "\n")
-                else:
-                    similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
-                    similarity_matrix[j][i] = similarity_matrix[i][j]
-                    f.write(str(items[i]) + ',' + str(items[j]) + ',' + str(similarity_matrix[i][j]) + "\n")
-                    f.write(str(items[j]) + ',' + str(items[i]) + ',' + str(similarity_matrix[j][i]) + "\n")
-                row.append(similarity_matrix[i][j])
-            # f.write(','.join([str(x) for x in row]) + "\n")
+matrix = mp.Array('d', [0.0] * (100 * 100))
+
+def compute_similarity(items, start_index, end_index, matrix):
+    for i in range(start_index, end_index):
+        print(i)
+        row = [1.0 if i == j else (cosine_similarity_items((items[i]), (items[j]))) for j in range(len(items))]
+        for j in range(len(items)):
+            matrix[i * len(items) + j] = float(row[j])
+        return matrix         
 
 def similarity_matrix_items_parallel():
     c = conn.cursor()
@@ -154,9 +147,8 @@ def similarity_matrix_items_parallel():
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
     items.sort()
-    items = [item[0] for item in items][:10]
-    similarity_matrix = np.full((len(items), len(items)), 0.)
-    num_processes = multiprocessing.cpu_count()
+    items = [item[0] for item in items][:100]
+    num_processes = mp.cpu_count()
     processes = []
     chunk_size = len(items) // num_processes
 
@@ -165,15 +157,17 @@ def similarity_matrix_items_parallel():
     for i in range(num_processes):
         start_index = i * chunk_size
         end_index = (i+1) * chunk_size if i < num_processes-1 else len(items)
-        p = multiprocessing.Process(target=compute_similarity, args=(similarity_matrix,items, start_index, end_index))
+        p = mp.Process(target=compute_similarity, args=(items, start_index, end_index, matrix))
         processes.append(p)
         p.start()
         
     for p in processes:
         p.join()
-    
-    return similarity_matrix
 
 if __name__ == '__main__':
-    matrix = similarity_matrix_items_parallel()
-    # np.savetxt("similarity_matrix.csv", similarity_matrix, delimiter=",")
+    m = similarity_matrix_items_parallel()
+    print(np.array(matrix))
+    matrix3 = np.array(matrix).reshape(100, 100)
+    with open('shared_matrix.txt', 'a') as f:
+        for row in matrix3:
+            f.write(','.join([str(x) for x in row]) + '\n')
