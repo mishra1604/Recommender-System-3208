@@ -124,7 +124,8 @@ def k_nearest_neighbours(user, item, k):
 # predict user rating for an item using k nearest neighbours
 def predict_rating(userID, itemID, k=5):
     c = conn.cursor()
-    neighbours = k_nearest_neighbours(userID, itemID, k)
+    neighboursTuples = knn(userID, itemID)
+    neighbours = [item[0] for item in neighboursTuples]
     userRatingForNeighbour = []
     # print(neighbours)
     for neighbour in neighbours:
@@ -135,9 +136,10 @@ def predict_rating(userID, itemID, k=5):
         else:
             userRatingForNeighbour.append(0)
 
-    Item_similarity_with_neighbour = [cosine_similarity_items(itemID, int(neighbour), userID) for neighbour in neighbours]
+    Item_similarity_with_neighbour = [similarity[2] for similarity in neighboursTuples]
     predict_rating_item = sum([Item_similarity_with_neighbour[i] * userRatingForNeighbour[i] for i in range(len(neighbours))]) / sum(Item_similarity_with_neighbour)
-    return predict_rating_item
+    finalRating = float("{:.2f}".format(predict_rating_item))
+    return finalRating
 
 
 # calculate the MAE of the predictions
@@ -151,10 +153,11 @@ def basic_mae():
     ratings = c.fetchall()
 
     actualRating = [rating[0] for rating in ratings]
-    print(actualRating)
+    print("actual ratings", actualRating)
 
     for user_item in user_items:
         predictedRatings.append(predict_rating(user_item[0], user_item[1]))
+    print("predicted ratings", predictedRatings)
 
     mae = sum([abs(predictedRatings[i] - actualRating[i]) for i in range(len(predictedRatings))]) / len(actualRating)
 
@@ -227,4 +230,4 @@ def similarity_matrix_items_parallel():
 
 if __name__ == '__main__':
     # matrix = similarity_matrix_items_parallel()
-    print(knn(1, 93))
+    basic_mae()
