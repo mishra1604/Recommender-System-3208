@@ -7,3 +7,6 @@ shared_matrix.txt
 train_100k.db
 .DS_Store
 bin/
+pythonFiles/item_similarity.db
+test_100k_withoutratings_new.csv
+null_values.txt
