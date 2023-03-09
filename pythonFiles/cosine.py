@@ -72,7 +72,7 @@ def create_item_similarityDB():
 
     c.execute( 'DELETE FROM items_table' )
     conn.commit()
-
+    i = 0
     for strLine in listLines :
         if len(strLine.strip()) > 0 :
             # itemid, itemid, Similarity
@@ -82,6 +82,7 @@ def create_item_similarityDB():
                 c.execute( 'INSERT INTO items_table VALUES (?,?,?)', (listParts[0], listParts[1], listParts[2]) )
             else :
                 raise Exception( 'failed to parse csv : ' + repr(listParts) )
+        i += 1
     conn.commit()
 
     c.execute( 'CREATE INDEX IF NOT EXISTS items_table_index on items_table (ItemID_1, ItemID_2)' )
@@ -96,11 +97,16 @@ def knn(user, item, k=5):
     second_conn = sqlite3.connect('item_similarity.db')
     d = second_conn.cursor()
     similarity = []
+    nullNeighbours = []
     for i in items:
         d.execute( 'SELECT ItemID_1, ItemID_2, Similarity FROM items_table WHERE ItemID_1 = ? AND ItemID_2 = ?', (i, item) )
         item_tuple = d.fetchall()
-        similarity.append(item_tuple[0])
-    
+        try:
+            similarity.append(item_tuple[0])
+        except:
+            nullNeighbours.append((i, item))
+            with open('null_values.txt', 'a') as f:
+                f.write(str((i, item)) + "\n")
     
     # sort the list of tuples by similarity
     sorted_similarity = sorted(similarity, key=lambda x: x[2], reverse=True)
@@ -122,66 +128,83 @@ def k_nearest_neighbours(user, item, k):
     return items[sorted_indices[-k:]]
 
 # predict user rating for an item using k nearest neighbours
-def predict_rating(userID, itemID, k=5):
-    c = conn.cursor()
-    neighboursTuples = knn(userID, itemID)
-    neighbours = [item[0] for item in neighboursTuples]
-    userRatingForNeighbour = []
-    # print(neighbours)
-    for neighbour in neighbours:
-        c.execute("SELECT Rating FROM example_table WHERE UserID = ? AND ItemID = ?", (userID, int(neighbour)))
-        rating = c.fetchone()
-        if rating is not None:
-            userRatingForNeighbour.append(rating[0])
-        else:
-            userRatingForNeighbour.append(0)
+def predict_rating(userID, itemID, k=3):
+    try:
+        c = conn.cursor()
+        neighboursTuples = knn(userID, itemID)
+        neighbours = [item[0] for item in neighboursTuples]
+        userRatingForNeighbour = []
+        # print(neighbours)
+        for neighbour in neighbours:
+            c.execute("SELECT Rating FROM example_table WHERE UserID = ? AND ItemID = ?", (userID, int(neighbour)))
+            rating = c.fetchone()
+            if rating is not None:
+                userRatingForNeighbour.append(rating[0])
+            else:
+                userRatingForNeighbour.append(0)
 
-    Item_similarity_with_neighbour = [similarity[2] for similarity in neighboursTuples]
-    predict_rating_item = sum([Item_similarity_with_neighbour[i] * userRatingForNeighbour[i] for i in range(len(neighbours))]) / sum(Item_similarity_with_neighbour)
-    finalRating = float("{:.2f}".format(predict_rating_item))
-    return finalRating
+        Item_similarity_with_neighbour = [similarity[2] for similarity in neighboursTuples]
+        predict_rating_item = sum([Item_similarity_with_neighbour[i] * userRatingForNeighbour[i] for i in range(len(neighbours))]) / sum(Item_similarity_with_neighbour)
+        finalRating = float("{:.3f}".format(predict_rating_item))
+        return finalRating
+    except:
+        return usr_avg[userID]
 
 
 # calculate the MAE of the predictions
 def basic_mae():
     c = conn.cursor()
-    c.execute( 'SELECT UserID, ItemID FROM example_table WHERE UserID = ?', (1, ))
+    c.execute( 'SELECT UserID, ItemID, Rating FROM example_table')
     user_items = c.fetchall()
+    user_items = user_items[:1000]
     predictedRatings = []
 
-    c.execute( 'SELECT Rating FROM example_table WHERE UserID = ?', (1, ))
-    ratings = c.fetchall()
+    ratings = []
+    for user_item_tuple in user_items:
+        #c.execute( 'SELECT Rating FROM example_table WHERE UserID = ? and ItemID = ?', (user_item_tuple[0], user_item_tuple[1]))
+        #rate = c.fetchall()
+        ratings.append([user_item_tuple[2]])
 
     actualRating = [rating[0] for rating in ratings]
-    print("actual ratings", actualRating)
 
-    for user_item in user_items:
-        predictedRatings.append(predict_rating(user_item[0], user_item[1]))
-    print("predicted ratings", predictedRatings)
+    for user_item_Tuple in user_items:
+        predictedRatings.append(predict_rating(user_item_Tuple[0], user_item_Tuple[1]))
 
     mae = sum([abs(predictedRatings[i] - actualRating[i]) for i in range(len(predictedRatings))]) / len(actualRating)
 
-    print("MAE for userID 1 = ", mae)
+    return "{:.2f}".format(mae)
 
-# calculating similarity matrix for items
-# def similarity_matrix_items(items):
-#     c = conn.cursor()
-#     c.execute( 'SELECT ItemID FROM example_table' )
-#     duplicate_items = c.fetchall()
-#     items = list(set(duplicate_items))
-#     items = [item[0] for item in items]
-#     similarity_matrix = np.zeros((len(items), len(items)))
-#     for i in range(0, len(items)):
-#         print(i)
-#         for j in range(i, len(items)):
-#             if i == j:
-#                 similarity_matrix[i][j] = 1
-#             elif similarity_matrix[i][j] == 0:
-#                 similarity_matrix[i][j] = cosine_similarity_items(items[i], items[j])
-#                 similarity_matrix[j][i] = similarity_matrix[i][j]
-#             else:
-#                 continue
-#     return similarity_matrix
+def create_test_db():
+    conn = sqlite3.connect('test_ratings.db')
+
+    readHandle = codecs.open( 'test_100k_withoutratings_new.csv', 'r', 'utf-8', errors = 'replace' )
+    listLines = readHandle.readlines()
+    readHandle.close()
+
+    c = conn.cursor()
+    c.execute( 'CREATE TABLE IF NOT EXISTS test_table (UserID INT, ItemID INT, Pred_Rating FLOAT)' )
+    conn.commit()
+
+    c.execute( 'DELETE FROM test_table' )
+    conn.commit()
+
+    for strLine in listLines :
+        if len(strLine.strip()) > 0 :
+            # userid, itemid, rating
+            listParts = strLine.strip().split(',')
+            if len(listParts) == 3 :
+                # insert training set into table
+                c.execute( 'INSERT INTO test_table VALUES (?,?,?)', (listParts[0], listParts[1], 0.0) )
+            else :
+                raise Exception( 'failed to parse csv : ' + repr(listParts) )
+    conn.commit()
+
+    c.execute( 'CREATE INDEX IF NOT EXISTS test_table_index on test_table (UserID, ItemID)' )
+    conn.commit()
+
+    c.close()
+    conn.close()
+
 
 import multiprocessing
 
@@ -208,7 +231,7 @@ def similarity_matrix_items_parallel():
     duplicate_items = c.fetchall()
     items = list(set(duplicate_items))
     items.sort()
-    items = [item[0] for item in items][:100]
+    items = [item[0] for item in items]
     similarity_matrix = np.full((len(items), len(items)), 0.)
     num_processes = multiprocessing.cpu_count()
     processes = []
@@ -228,6 +251,24 @@ def similarity_matrix_items_parallel():
     
     return similarity_matrix
 
+def test_rating_predictions():
+    conn = sqlite3.connect('test_ratings.db')
+    cursor = conn.cursor()
+
+    # retrieve UserID, ItemID from the databse
+    cursor.execute( 'SELECT UserID, ItemID FROM test_table' )
+    user_items = cursor.fetchall()
+
+    # for each user-item pair, predict the rating and update the database
+    for user_item_tuple in user_items:
+        rating_value = predict_rating(user_item_tuple[0], user_item_tuple[1])
+        cursor.execute( 'UPDATE test_table SET Pred_Rating = ? WHERE UserID = ? AND ItemID = ?', (rating_value, user_item_tuple[0], user_item_tuple[1]) )
+        conn.commit()
+
+import time
 if __name__ == '__main__':
     # matrix = similarity_matrix_items_parallel()
-    basic_mae()
+    start = time.time()
+    test_rating_predictions()
+    end = time.time()
+    print("Time taken: ", end - start)
