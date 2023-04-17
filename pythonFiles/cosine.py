@@ -5,6 +5,7 @@ import logging
 import time
 import concurrent.futures
 import codecs
+import csv
 
 # find the cosine similarity between users in the sqlite3 database
 conn = sqlite3.connect( 'comp3208_train.db' )
@@ -88,7 +89,7 @@ def create_item_similarityDB():
     c.execute( 'CREATE INDEX IF NOT EXISTS items_table_index on items_table (ItemID_1, ItemID_2)' )
     conn.commit()
 
-def knn(user, item, k=5):
+def knn(user, item, k=10):
     c = conn.cursor()
     c.execute( 'SELECT ItemID FROM example_table WHERE UserID = ?', (user,) )
     items = c.fetchall()
@@ -185,7 +186,7 @@ def create_test_db():
     c.execute( 'CREATE TABLE IF NOT EXISTS test_table (UserID INT, ItemID INT, Pred_Rating FLOAT)' )
     conn.commit()
 
-    c.execute( 'DELETE FROM test_table' )
+    c.execute( 'DELETE FROM test_table' ) 
     conn.commit()
 
     for strLine in listLines :
@@ -195,6 +196,37 @@ def create_test_db():
             if len(listParts) == 3 :
                 # insert training set into table
                 c.execute( 'INSERT INTO test_table VALUES (?,?,?)', (listParts[0], listParts[1], 0.0) )
+            else :
+                raise Exception( 'failed to parse csv : ' + repr(listParts) )
+    conn.commit()
+
+    c.execute( 'CREATE INDEX IF NOT EXISTS test_table_index on test_table (UserID, ItemID)' )
+    conn.commit()
+
+    c.close()
+    conn.close()
+
+def second_test_db():
+    conn = sqlite3.connect('testing_set.db')
+
+    readHandle = codecs.open( 'test_100k_withoutratings_new.csv', 'r', 'utf-8', errors = 'replace' )
+    listLines = readHandle.readlines()
+    readHandle.close()
+
+    c = conn.cursor()
+    c.execute( 'CREATE TABLE IF NOT EXISTS test_table (UserID INT, ItemID INT, Pred_Rating FLOAT, Timestamp FLOAT)' )
+    conn.commit()
+
+    c.execute( 'DELETE FROM test_table' )
+    conn.commit()
+
+    for strLine in listLines :
+        if len(strLine.strip()) > 0 :
+            # userid, itemid, rating
+            listParts = strLine.strip().split(',')
+            if len(listParts) == 3 :
+                # insert training set into table
+                c.execute( 'INSERT INTO test_table VALUES (?,?,?,?)', (listParts[0], listParts[1], 0.0, listParts[2]) )
             else :
                 raise Exception( 'failed to parse csv : ' + repr(listParts) )
     conn.commit()
@@ -252,7 +284,7 @@ def similarity_matrix_items_parallel():
     return similarity_matrix
 
 def test_rating_predictions():
-    conn = sqlite3.connect('test_ratings.db')
+    conn = sqlite3.connect('testing_set.db')
     cursor = conn.cursor()
 
     # retrieve UserID, ItemID from the databse
@@ -265,10 +297,20 @@ def test_rating_predictions():
         cursor.execute( 'UPDATE test_table SET Pred_Rating = ? WHERE UserID = ? AND ItemID = ?', (rating_value, user_item_tuple[0], user_item_tuple[1]) )
         conn.commit()
 
+def export_test_db():
+    conn = sqlite3.connect('testing_set.db')
+    cursor = conn.cursor()
+    cursor.execute("select * from test_table;")
+    with open("out2.csv", 'w',newline='') as csv_file: 
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow([i[0] for i in cursor.description]) 
+        csv_writer.writerows(cursor)
+    conn.close()
+
 import time
 if __name__ == '__main__':
     # matrix = similarity_matrix_items_parallel()
     start = time.time()
-    test_rating_predictions()
+    print(cosine_similarity_items(1648, 1))
     end = time.time()
     print("Time taken: ", end - start)

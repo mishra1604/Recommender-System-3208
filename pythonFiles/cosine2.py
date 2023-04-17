@@ -28,34 +28,7 @@ def file_loading():
         writer = csv.writer(f)
         writer.writerows(testing)
 
-def create_training_db():
-    conn = sqlite3.connect( 'training_split.db')
-    readHandle = codecs.open( 'shuffled_train_ratings.csv', 'r', 'utf-8', errors = 'replace' )
-    listLines = readHandle.readlines()
-    readHandle.close()
-
-    c = conn.cursor()
-    c.execute( 'CREATE TABLE IF NOT EXISTS example_table (UserID INT, ItemID INT, Rating FLOAT, PredRating FLOAT)' )
-    conn.commit()
-
-    c.execute( 'DELETE FROM example_table' )
-    conn.commit()
-
-    for strLine in listLines :
-        if len(strLine.strip()) > 0 :
-            # userid, itemid, rating, timestamp
-            listParts = strLine.strip().split(',')
-            if len(listParts) == 4 :
-                # insert training set into table with a completely random predicted rating
-                c.execute( 'INSERT INTO example_table VALUES (?,?,?,?)', (listParts[0], listParts[1], listParts[2], random.random() * 5.0) )
-            else :
-                raise Exception( 'failed to parse csv : ' + repr(listParts) )
-    conn.commit()
-
-    c.execute( 'CREATE INDEX IF NOT EXISTS example_table_index on example_table (UserID, ItemID)' )
-    conn.commit()
-
-conn = sqlite3.connect( 'training_split.db' )
+conn = sqlite3.connect( 'comp3208_train.db' )
 
 # create a dictionary for average rating of each user
 usr_avg = {}
@@ -73,8 +46,16 @@ c.execute( 'SELECT ItemID FROM example_table' )
 duplicate_items = c.fetchall()
 items = list(set(duplicate_items))
 items.sort()
-itemsList = [item[0] for item in items]
-print(len(itemsList))
+itemsList = [item[0] for item in items] #-----------------------> list of items
+
+# average item rating
+avg_item = {}
+def avg_item_rating(item):
+    for x in itemsList:
+        c = conn.cursor()
+        c.execute( 'SELECT AVG(Rating) FROM example_table WHERE ItemID = ?', (x,) )
+        avg = c.fetchone()[0]
+        avg_item[x] = avg
 
 # dictionary: itemID: [list of UserID, Rating]
 item_dict = {}
@@ -83,19 +64,15 @@ def item_dict_query():
         c = conn.cursor()
         c.execute( 'SELECT UserID, Rating FROM example_table WHERE ItemID = ?', (x,) )
         item_dict[x] = c.fetchall()
+# item_dict_query()
 
-user_sim_dict = {}
+user_sim_dict = {} # --------------------------------------------> dictionary: userID: [list of ItemID, Rating]
 def user_sim_dict_query():
     for x in range(1, 944):
         c = conn.cursor()
-        c.execute( 'SELECT Rating FROM example_table WHERE UserID = ?', (x,) )
+        c.execute( 'SELECT ItemID, Rating FROM example_table WHERE UserID = ?', (x,) )
         user_sim_dict[x] = c.fetchall()
-
-# start = time.time()        
-# item_dict_query()
-# end = time.time()
-
-# print(len(item_dict), "time taken:", end - start)
+user_sim_dict_query()
 
 def cosine_similarity_items(item1, item2):
     item1 = item_dict[item1]
@@ -129,29 +106,12 @@ def cosine_similarity_items(item1, item2):
     else:
         value = "{:.4f}".format(numerator / denominator)
         return value
-    
-def cosine_similarity_users(user1, user2):
-    user1 = user_sim_dict[user1]
-    user1_ratings = [i[0] for i in user1]
 
-    user2 = user_sim_dict[user2]
-    user2_ratings = [i[0] for i in user2]
-
-    numerator = sum([user1_ratings[i] * user2_ratings[i] for i in range(min(len(user1_ratings), len(user2_ratings)))])
-    denominator = math.sqrt(sum([user1_ratings[i]**2 for i in range(len(user1_ratings))])) * math.sqrt(sum([user2_ratings[i]**2 for i in range(len(user2_ratings))]))
-    if denominator == 0:
-        return 0
-    else:
-        value = "{:.4f}".format(numerator / denominator)
-        return value
-
-
-itemsList = itemsList
+# itemsList = itemsList
 matrix = np.full((len(itemsList), len(itemsList)), 0.)
-
 def compute_matrix():
     for i in range(len(itemsList)):
-        print(i)
+        if i % 100 == 0: print(i)
         for j in range(i, len(itemsList)):
             if i==j:
                 matrix[i][j] = 1.0
@@ -159,9 +119,41 @@ def compute_matrix():
                 matrix[i][j] = cosine_similarity_items(itemsList[i], itemsList[j])
                 matrix[j][i] = matrix[i][j]
 
-loadMatrix = np.loadtxt('simpleMatrix.csv', delimiter=',')
+item_similarity_matrix = np.loadtxt('simpleMatrix.csv', delimiter=',')
 
-# user similarity dictionary
+def pearson_similarity_users(user1ID, user2ID):
+    user1 = user_sim_dict[user1ID]
+    user1_items = [i[0] for i in user1]
+    user1_ratings = [i[1] for i in user1]
+
+    user2 = user_sim_dict[user2ID]
+    user2_items = [i[0] for i in user2]
+    user2_ratings = [i[1] for i in user2]
+
+    user1Rating = []
+    user2Rating = []
+    commonItemList = []
+    largerList = max(len(user1_items), len(user2_items))
+    for i in range( largerList ):
+        if len(user1_items) > len(user2_items):
+            if user1_items[i] in user2_items:
+                user1Rating.append(user1_ratings[i])
+                user2Rating.append(user2_ratings[user2_items.index(user1_items[i])])
+                commonItemList.append(user1_items[i])
+        else:
+            if user2_items[i] in user1_items:
+                user1Rating.append(user1_ratings[user1_items.index(user2_items[i])])
+                user2Rating.append(user2_ratings[i])
+                commonItemList.append(user2_items[i])
+    
+    # pearson's coefficient
+    numerator = sum([(user1Rating[i] - usr_avg[user1ID]) * (user2Rating[i] - usr_avg[user2ID]) for i in range(len(commonItemList))])
+    denominator = math.sqrt(sum([(user1Rating[i] - usr_avg[user1ID])**2 for i in range(len(commonItemList))])) * math.sqrt(sum([(user2Rating[i] - usr_avg[user2ID])**2 for i in range(len(commonItemList))]))
+    if denominator == 0:
+        return 0
+    else:
+        value = "{:.4f}".format(numerator / denominator)
+        return value
 
 c = conn.cursor()
 c.execute( 'SELECT UserID FROM example_table' )
@@ -170,28 +162,80 @@ users = list(set(duplicate_users))
 users.sort()
 userList = [user[0] for user in users]
 
-
 # user similarity matrix
 user_sim_matrix = np.full((len(userList), len(userList)), 0.)
 
 def compute_user_sim_matrix():
     for i in range(len(userList)):
-        print(i)
+        if i%100 == 0: print(i)
         for j in range(i, len(userList)):
             if i==j:
                 user_sim_matrix[i][j] = 1.0
             else:
-                user_sim_matrix[i][j] = cosine_similarity_users(userList[i], userList[j])
+                user_sim_matrix[i][j] = pearson_similarity_users(userList[i], userList[j])
                 user_sim_matrix[j][i] = user_sim_matrix[i][j]
 
-# start = time.time()
-# user_sim_dict_query()
-# end = time.time()
-# print("time taken:", end - start)
+# neighborhood selection
 
-# start = time.time()
-# compute_user_sim_matrix()
-# end = time.time()
-# print("time taken:", end - start)
-# # save matrix to csv
-# np.savetxt("user_matrix.csv", user_sim_matrix, fmt='%.4f', delimiter=",")
+user_similarity_matrix = np.loadtxt('user_matrix.csv', delimiter=',')
+
+# closest neighbours to item i from item_similarity_matrix
+def closest_neighbours(user, item, k=5):
+    c = conn.cursor()
+    c.execute( 'SELECT ItemID FROM example_table WHERE UserID =?', (user,) )
+    items_n1 = c.fetchall()
+    items_n1 = [item[0] for item in items_n1] #items that the user has rated
+
+    items_n2 = [item for item in itemsList if item not in items_n1] #items that the user has not rated
+
+    # similarity between item i and items in items_n1
+    sim_with_n1 = [(i,item_similarity_matrix[itemsList.index(item)][itemsList.index(i)]) for i in items_n1]
+    sim_with_n1.sort(key=lambda x: x[1], reverse=True)
+    
+    # similarity between item i and items in items_n2
+    sim_with_n2 = [(i,item_similarity_matrix[itemsList.index(item)][itemsList.index(i)]) for i in items_n2]#
+    sim_with_n2.sort(key=lambda x: x[1], reverse=True)
+    sim_with_n2_itemID = [i[0] for i in sim_with_n2]
+
+    user_index = userList.index(user)
+    user_similarity = list(user_similarity_matrix[user_index])
+    user_similarity_tuple = [(userList[i], user_similarity[i]) for i in range(len(user_similarity))]
+    user_similarity_tuple.sort(key=lambda x: x[1], reverse=True)
+    user_similarity_tuple = user_similarity_tuple[1:] #excluding the user itself
+    
+
+    # users from user_similarity_tuple who have rated item i in items_n2
+    users_who_rated_itemsN2 = []
+    for i in sim_with_n2_itemID:
+        for user in user_similarity_tuple:
+            user_item_rating = user_sim_dict[user[0]]
+            if i in [j[0] for j in user_item_rating]:
+                users_who_rated_itemsN2.append((user[0], i))
+                break
+    
+    return sim_with_n1, sim_with_n2, users_who_rated_itemsN2, user_similarity_tuple
+
+
+# prediction
+def predict(user, item):
+    sim_with_n1, sim_with_n2, users_who_rated_itemsN2, user_similarity_tuple = closest_neighbours(user, item)
+    # numerator = sum([sim_with_n1[i][1] * (user_sim_dict[user][itemsList.index(sim_with_n1[i][0])][1] - avg_item[i]) for i in range(len(sim_with_n1))]) 
+    # + sum([user_similarity_tuple[i][1] * (item_similarity_matrix[itemsList.index(item)][itemsList.index(users_who_rated_itemsN2[i][1])] * (user_sim_dict[users_who_rated_itemsN2[i][0]][itemsList.index(users_who_rated_itemsN2[i][1])][1] - avg_item[itemsList.index(users_who_rated_itemsN2[i][1])])) for i in range(len(users_who_rated_itemsN2))])
+
+    # denominator = sum([sim_with_n1[i][1] for i in range(len(sim_with_n1))]) + sum([user_similarity_tuple[i][1] * item_similarity_matrix[itemsList.index(item)][itemsList.index(users_who_rated_itemsN2[i][1])] for i in range(len(users_who_rated_itemsN2))])
+
+    numerator = sum(user_similarity_tuple[i][1] * (item_similarity_matrix)
+
+    if denominator == 0:
+        return 0
+    else:
+        value = "{:.4f}".format(avg_item[itemsList.index(item)] + numerator / denominator)
+        return value
+    
+
+start = time.time()
+predicted_rating = predict(1, 93)
+end = time.time()
+
+print("Time taken to predict rating: ", end-start)
+print("Predicted rating: ", predicted_rating)
