@@ -5,7 +5,7 @@ from sklearn.metrics import mean_absolute_error
 class ExplicitMF():
     def __init__(self, 
                  ratings,
-                 n_factors=40,
+                 n_factors=None,
                  learning='sgd',
                  item_fact_reg=0.0, 
                  user_fact_reg=0.0,
@@ -98,8 +98,8 @@ class ExplicitMF():
             self.partial_train(n_iter)
         elif self.learning == 'sgd':
             self.learning_rate = learning_rate
-            self.user_bias = np.zeros(self.n_users)
-            self.item_bias = np.zeros(self.n_items)
+            self.user_bias = np.zeros(self.n_users, dtype=np.float16)
+            self.item_bias = np.zeros(self.n_items, dtype=np.float16)
             self.global_bias = np.mean(self.ratings[np.where(self.ratings != 0)])
             self.partial_train(n_iter)
     
@@ -111,7 +111,7 @@ class ExplicitMF():
         """
         ctr = 1
         while ctr <= n_iter:
-            if ctr % 10 == 0 and self._v:
+            if ctr % 1 == 0 and self._v:
                 print ('\tcurrent iteration: {}'.format(ctr))
             if self.learning == 'als':
                 self.user_vecs = self.als_step(self.user_vecs, 
@@ -159,18 +159,17 @@ class ExplicitMF():
 
     def predict(self, u, i):
         """ Single user and item prediction."""
-        if self.learning == 'als':
-            return self.user_vecs[u, :].dot(self.item_vecs[i, :].T)
-        elif self.learning == 'sgd':
-            prediction = self.global_bias + self.user_bias[u] + self.item_bias[i]
-            prediction += self.user_vecs[u, :].dot(self.item_vecs[i, :].T)
-            return prediction
-    
+        prediction = self.global_bias + self.user_bias[u] + self.item_bias[i]
+        prediction += self.user_vecs[u, :].dot(self.item_vecs[i, :].T)
+        return round(prediction, 0)
+        
     def predict_all(self):
         """ Predict ratings for every user and item."""
         predictions = np.zeros((self.user_vecs.shape[0], 
-                                self.item_vecs.shape[0]))
+                                self.item_vecs.shape[0]), dtype=np.float16)
+        print("Empty Prediction Array Created", self.user_vecs.shape, self.item_vecs.shape)
         for u in range(self.user_vecs.shape[0]):
+            if u % 1000 == 0: print("Predicting for user", u)
             for i in range(self.item_vecs.shape[0]):
                 predictions[u, i] = self.predict(u, i)
                 
@@ -199,6 +198,7 @@ class ExplicitMF():
         self.train_mse =[]
         self.test_mse = []
         iter_diff = 0
+        print ('Calculating learning curve...')
         for (i, n_iter) in enumerate(iter_array):
             if self._v:
                 print ('Iteration: {}'.format(n_iter))
@@ -207,7 +207,9 @@ class ExplicitMF():
             else:
                 self.partial_train(n_iter - iter_diff)
 
+            print("Training completed")
             predictions = self.predict_all()
+            print("Prediction completed")
 
             self.train_mse += [self.get_mse(predictions, self.ratings)]
             self.test_mse += [self.get_mse(predictions, test)]
@@ -215,3 +217,5 @@ class ExplicitMF():
                 print ('Train MAE: ' + str(self.train_mse[-1]))
                 print ('Test MAE: ' + str(self.test_mse[-1]))
             iter_diff = n_iter
+
+        return predictions
