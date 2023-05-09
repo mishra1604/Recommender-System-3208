@@ -70,7 +70,7 @@ def sparse_matrix(ratings_matrix):
     sparsity = float(len(ratings_matrix.nonzero()[0]))
     sparsity /= (ratings_matrix.shape[0] * ratings_matrix.shape[1])
     sparsity *= 100
-    print ('Sparsity: {:4.2f}%'.format(sparsity))
+    return ('Sparsity: {:4.2f}%'.format(sparsity))
 
 def train_test_split(ratings):
     test = np.zeros(ratings.shape, dtype=np.float16)
@@ -89,9 +89,12 @@ def train_test_split(ratings):
 train, test = train_test_split(ratings_matrix)
 
 def try_model():
-    MF_SGD = ExplicitMF(train, n_factors=30, learning='sgd', verbose=True)
-    iter_array = [10]
-    new_computed_matrix = MF_SGD.calculate_learning_curve(iter_array, test, learning_rate=0.001)
+    MF_SGD = ExplicitMF(train, n_factors=20, learning='sgd', verbose=True)
+    iter_array = [15]
+    # ratings to predict
+    test_shuffled = read_csv('shuffled_test_ratings.csv')
+    print("length of test_shuffled = ", len(test_shuffled))
+    new_computed_matrix = MF_SGD.calculate_learning_curve(iter_array, test, userDict, itemDict, to_predict = test_shuffled, learning_rate=0.001)
     return new_computed_matrix
 
 start = time.time()
@@ -128,4 +131,4 @@ def test_rating_predictions():
     
     print("Number of exceptions = ", except_counter)
 
-test_rating_predictions()
+# test_rating_predictions()

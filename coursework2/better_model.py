@@ -58,34 +58,6 @@ class ExplicitMF():
             self.n_samples = len(self.sample_row)
         self._v = verbose
 
-    def als_step(self,
-                 latent_vectors,
-                 fixed_vecs,
-                 ratings,
-                 _lambda,
-                 type='user'):
-        """
-        One of the two ALS steps. Solve for the latent vectors
-        specified by type.
-        """
-        if type == 'user':
-            # Precompute
-            YTY = fixed_vecs.T.dot(fixed_vecs)
-            lambdaI = np.eye(YTY.shape[0]) * _lambda
-
-            for u in range(latent_vectors.shape[0]):
-                latent_vectors[u, :] = solve((YTY + lambdaI), 
-                                             ratings[u, :].dot(fixed_vecs))
-        elif type == 'item':
-            # Precompute
-            XTX = fixed_vecs.T.dot(fixed_vecs)
-            lambdaI = np.eye(XTX.shape[0]) * _lambda
-            
-            for i in range(latent_vectors.shape[0]):
-                latent_vectors[i, :] = solve((XTX + lambdaI), 
-                                             ratings[:, i].T.dot(fixed_vecs))
-        return latent_vectors
-
     def train(self, n_iter=10, learning_rate=0.1):
         """ Train model for n_iter iterations from scratch."""
         # initialize latent vectors        
@@ -93,15 +65,11 @@ class ExplicitMF():
                                           size=(self.n_users, self.n_factors))
         self.item_vecs = np.random.normal(scale=1./self.n_factors,
                                           size=(self.n_items, self.n_factors))
-        
-        if self.learning == 'als':
-            self.partial_train(n_iter)
-        elif self.learning == 'sgd':
-            self.learning_rate = learning_rate
-            self.user_bias = np.zeros(self.n_users, dtype=np.float16)
-            self.item_bias = np.zeros(self.n_items, dtype=np.float16)
-            self.global_bias = np.mean(self.ratings[np.where(self.ratings != 0)])
-            self.partial_train(n_iter)
+        self.learning_rate = learning_rate
+        self.user_bias = np.zeros(self.n_users, dtype=np.float16)
+        self.item_bias = np.zeros(self.n_items, dtype=np.float16)
+        self.global_bias = np.mean(self.ratings[np.where(self.ratings != 0)])
+        self.partial_train(n_iter)
     
     
     def partial_train(self, n_iter):
@@ -113,21 +81,10 @@ class ExplicitMF():
         while ctr <= n_iter:
             if ctr % 1 == 0 and self._v:
                 print ('\tcurrent iteration: {}'.format(ctr))
-            if self.learning == 'als':
-                self.user_vecs = self.als_step(self.user_vecs, 
-                                               self.item_vecs, 
-                                               self.ratings, 
-                                               self.user_fact_reg, 
-                                               type='user')
-                self.item_vecs = self.als_step(self.item_vecs, 
-                                               self.user_vecs, 
-                                               self.ratings, 
-                                               self.item_fact_reg, 
-                                               type='item')
-            elif self.learning == 'sgd':
-                self.training_indices = np.arange(self.n_samples)
-                np.random.shuffle(self.training_indices)
-                self.sgd()
+
+            self.training_indices = np.arange(self.n_samples)
+            np.random.shuffle(self.training_indices)
+            self.sgd()
             ctr += 1
 
     def sgd(self):
@@ -150,12 +107,6 @@ class ExplicitMF():
             self.item_vecs[i, :] += self.learning_rate * \
                                     (e * self.user_vecs[u, :] - \
                                      self.item_fact_reg * self.item_vecs[i,:])
-            
-    def get_mse(self, pred, actual):
-        # Ignore nonzero terms.
-        pred = pred[actual.nonzero()].flatten()
-        actual = actual[actual.nonzero()].flatten()
-        return mean_absolute_error(pred, actual)
 
     def predict(self, u, i):
         """ Single user and item prediction."""
@@ -175,7 +126,7 @@ class ExplicitMF():
                 
         return predictions
     
-    def calculate_learning_curve(self, iter_array, test, learning_rate=0.1):
+    def calculate_learning_curve(self, iter_array, test, user_index_dictionary, item_index_dictionary, to_predict = None, learning_rate=0.1):
         """
         Keep track of MSE as a function of training iterations.
         
@@ -206,16 +157,24 @@ class ExplicitMF():
                 self.train(n_iter - iter_diff, learning_rate)
             else:
                 self.partial_train(n_iter - iter_diff)
-
+            
             print("Training completed")
-            predictions = self.predict_all()
-            print("Prediction completed")
 
-            self.train_mse += [self.get_mse(predictions, self.ratings)]
-            self.test_mse += [self.get_mse(predictions, test)]
+            actual_rating_list = []
+            predicted_rating_list = []
+            for tuple in to_predict:
+                if len(tuple) == 4:
+                    user_ID = int(tuple[0])
+                    item_ID = int(tuple[1])
+                    actual_rating = int(tuple[2])
+                    predicted_rating = self.predict(user_index_dictionary[user_ID], item_index_dictionary[item_ID])
+                    actual_rating_list.append(actual_rating)
+                    predicted_rating_list.append(predicted_rating)
+
+            # self.train_mse += [self.get_mse(predictions, self.ratings)]
+            self.test_mse += [mean_absolute_error(predicted_rating_list, actual_rating_list)]
             if self._v:
-                print ('Train MAE: ' + str(self.train_mse[-1]))
                 print ('Test MAE: ' + str(self.test_mse[-1]))
             iter_diff = n_iter
 
-        return predictions
+        return None
